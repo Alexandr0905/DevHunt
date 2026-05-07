@@ -6,6 +6,8 @@ import com.devhunt.service.scraper.JobScraper;
 import com.devhunt.service.scraper.ScraperFactory;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,8 +23,8 @@ public class VacancyScheduler {
     private final VacancyRepository vacancyRepository;
 
     // 1. Отключаем автоматический запуск каждую минуту, чтобы не ловить баны
-    // @Scheduled(cron = "0 * * * * *")
-    @Transactional // Добавляем общую транзакцию на процесс
+    @Scheduled(cron = "0 0 * * * *")
+    @Transactional
     public void runScrapers() {
         log.info("--- STARTING SCRAPING SESSION ---");
 
@@ -74,5 +76,11 @@ public class VacancyScheduler {
             }
         }
         log.info("--- SCRAPING SESSION COMPLETED ---");
+    }
+
+    @EventListener(ApplicationReadyEvent.class)
+    public void onApplicationReady() {
+        log.info("Application started. Initializing first-time scraping...");
+        runScrapers(); // Запускает тот же процесс, что и по расписанию
     }
 }
