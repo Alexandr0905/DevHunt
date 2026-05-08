@@ -9,12 +9,16 @@ import AuthModal from './components/AuthModal';
 import VacancyModal from './components/VacancyModal';
 import StatsDashboard from './components/StatsDashboard';
 import ProfilePanel from './components/ProfilePanel';
+import KanbanBoard from './components/KanbanBoard';
 
-type ViewMode = 'all' | 'favorites' | 'stats' | 'profile' | 'internships';
+// Добавили 'kanban' в типы
+type ViewMode = 'all' | 'favorites' | 'stats' | 'profile' | 'internships' | 'kanban';
 
 function App() {
   const [vacancies, setVacancies] = useState<Vacancy[]>([]);
   const [favoriteIds, setFavoriteIds] = useState<Set<number>>(new Set());
+  // Стейт для отслеженных вакансий (добавленных на доску)
+  const [trackedIds, setTrackedIds] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -29,9 +33,33 @@ function App() {
 
   const isAuthenticated = !!userEmail;
 
+  // Загрузка ID вакансий, которые уже на доске
+  const fetchTracked = async () => {
+    if (!isAuthenticated) return;
+    try {
+      // Убрали headers с ID!
+      const data = await api.fetchWithAuth('/kanban');
+      setTrackedIds(new Set(data.map((app: any) => app.vacancy.id)));
+    } catch (e) {
+      console.error("Не удалось загрузить канбан", e);
+    }
+  };
+
+  const handleUntrack = async (vacancyId: number) => {
+    try {
+      await api.fetchWithAuth(`/kanban/vacancy/${vacancyId}`, { method: 'DELETE' });
+      setTrackedIds(prev => {
+        const next = new Set(prev);
+        next.delete(vacancyId);
+        return next;
+      });
+    } catch (e) {
+      console.error("Ошибка при отмене просмотра", e);
+    }
+  };
+
   const fetchData = async () => {
-    // Не грузим вакансии заново, если открыт профиль
-    if (viewMode === 'profile') return;
+    if (viewMode === 'profile' || viewMode === 'kanban') return;
 
     setLoading(true);
     try {
@@ -40,32 +68,19 @@ function App() {
         setVacancies(data);
         setFavoriteIds(new Set(data.map(v => v.id)));
       } else {
-        // Для вкладки 'all' и 'stats' грузим общие данные
         const size = viewMode === 'stats' ? '100' : '10';
 
-        // Собираем параметры аккуратно и РАЗДЕЛЬНО
         const queryParams = new URLSearchParams({
           page: viewMode === 'stats' ? '0' : currentPage.toString(),
           size: size,
         });
 
-        if (filters.keyword) {
-          queryParams.append('keyword', filters.keyword);
-        }
-
-        // Отправляем direction своим отдельным параметром!
-        if (filters.direction && filters.direction !== 'Все направления') {
-          queryParams.append('direction', filters.direction);
-        }
-
-        if (filters.minSalaryRub) {
-          queryParams.append('minSalaryRub', filters.minSalaryRub);
-        }
+        if (filters.keyword) queryParams.append('keyword', filters.keyword);
+        if (filters.direction && filters.direction !== 'Все направления') queryParams.append('direction', filters.direction);
+        if (filters.minSalaryRub) queryParams.append('minSalaryRub', filters.minSalaryRub);
 
         const targetGrade = viewMode === 'internships' ? 'INTERN' : filters.grade;
-        if (targetGrade && targetGrade !== 'Любой грейд') {
-          queryParams.append('grade', targetGrade);
-        }
+        if (targetGrade && targetGrade !== 'Любой грейд') queryParams.append('grade', targetGrade);
 
         const response = await fetch(`http://localhost:8080/api/vacancies?${queryParams.toString()}`);
         const data: PageResponse<Vacancy> = await response.json();
@@ -76,6 +91,7 @@ function App() {
         if (isAuthenticated) {
           const favs: Vacancy[] = await api.fetchWithAuth('/favorites');
           setFavoriteIds(new Set(favs.map(v => v.id)));
+          fetchTracked(); // Грузим статусы трекера
         }
       }
     } catch (err: any) {
@@ -89,6 +105,11 @@ function App() {
     fetchData();
   }, [viewMode, filters, currentPage, isAuthenticated]);
 
+  // Загружаем трекер при логине
+  useEffect(() => {
+    fetchTracked();
+  }, [isAuthenticated]);
+
   const handleToggleFavorite = async (id: number) => {
     if (favoriteIds.has(id)) {
       await api.fetchWithAuth(`/favorites/${id}`, { method: 'DELETE' });
@@ -96,6 +117,21 @@ function App() {
     } else {
       await api.fetchWithAuth(`/favorites/${id}`, { method: 'POST' });
       setFavoriteIds(prev => new Set(prev).add(id));
+    }
+  };
+
+  // Функция добавления на доску Канбан
+  const handleTrack = async (vacancyId: number) => {
+    if (!isAuthenticated) {
+      setIsAuthModalOpen(true);
+      return;
+    }
+    try {
+      // Убрали headers с ID!
+      await api.fetchWithAuth(`/kanban/apply/${vacancyId}`, { method: 'POST' });
+      setTrackedIds(prev => new Set(prev).add(vacancyId));
+    } catch (e) {
+      console.error("Ошибка при добавлении в трекер", e);
     }
   };
 
@@ -131,29 +167,30 @@ function App() {
         {/* Навигация по вкладкам */}
         <div className="flex flex-wrap gap-6 mb-8 border-b border-gray-200">
           <button onClick={() => { setViewMode('all'); setCurrentPage(0); }} className={`text-lg font-bold pb-3 transition-all ${viewMode === 'all' ? 'text-blue-600 border-b-4 border-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>Лента вакансий</button>
-          {/* НОВАЯ ВКЛАДКА */}
           <button onClick={() => { setViewMode('internships'); setCurrentPage(0); }} className={`text-lg font-bold pb-3 transition-all ${viewMode === 'internships' ? 'text-blue-600 border-b-4 border-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>Стажировки</button>
           <button onClick={() => setViewMode('stats')} className={`text-lg font-bold pb-3 transition-all ${viewMode === 'stats' ? 'text-blue-600 border-b-4 border-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>Аналитика</button>
           {isAuthenticated && (
             <>
               <button onClick={() => setViewMode('favorites')} className={`text-lg font-bold pb-3 transition-all ${viewMode === 'favorites' ? 'text-blue-600 border-b-4 border-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>Избранное ({favoriteIds.size})</button>
+              {/* НОВАЯ ВКЛАДКА КАНБАНА */}
+              <button onClick={() => setViewMode('kanban')} className={`text-lg font-bold pb-3 transition-all ${viewMode === 'kanban' ? 'text-blue-600 border-b-4 border-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>Мои отклики</button>
               <button onClick={() => setViewMode('profile')} className={`text-lg font-bold pb-3 transition-all ${viewMode === 'profile' ? 'text-blue-600 border-b-4 border-blue-600' : 'text-gray-400 hover:text-gray-600'} sm:hidden`}>Профиль</button>
             </>
           )}
         </div>
 
-        {/* Контент в зависимости от вкладки */}
         {viewMode === 'profile' && isAuthenticated && <ProfilePanel />}
-
         {viewMode === 'stats' && <StatsDashboard vacancies={vacancies} />}
+
+        {/* РЕНДЕР КАНБАН ДОСКИ */}
+        {viewMode === 'kanban' && isAuthenticated && <KanbanBoard onSelectVacancy={setSelectedVacancy} />}
 
         {(viewMode === 'all' || viewMode === 'favorites' || viewMode === 'internships') && (
           <>
-            {/* Показываем фильтры и для Всех вакансий, и для Стажировок */}
             {(viewMode === 'all' || viewMode === 'internships') && (
               <FilterPanel
                 onFilterChange={(f) => { setFilters(f); setCurrentPage(0); }}
-                hideGrade={viewMode === 'internships'} // Прячем выбор грейда, если мы в стажировках
+                hideGrade={viewMode === 'internships'}
               />
             )}
 
@@ -167,7 +204,15 @@ function App() {
               <div className="space-y-4">
                 {vacancies.map(v => (
                   <div key={v.id} onClick={() => setSelectedVacancy(v)} className="cursor-pointer">
-                    <VacancyCard vacancy={v} isAuthenticated={isAuthenticated} isFavorite={favoriteIds.has(v.id)} onToggleFavorite={(id) => handleToggleFavorite(id)} />
+                    <VacancyCard
+                      vacancy={v}
+                      isAuthenticated={isAuthenticated}
+                      isFavorite={favoriteIds.has(v.id)}
+                      onToggleFavorite={(id) => handleToggleFavorite(id)}
+                      isTracked={trackedIds.has(v.id)} // Передаем флаг "на доске ли"
+                      onTrack={(id) => handleTrack(id)} // Передаем функцию добавления
+                      onUntrack={(id) => handleUntrack(id)}
+                    />
                   </div>
                 ))}
               </div>
@@ -175,85 +220,32 @@ function App() {
 
             {/* Пагинация */}
             {(viewMode === 'all' || viewMode === 'internships') && totalPages > 1 && (() => {
-              // Генерируем номера страниц с многоточиями
               const pages: (number | '...')[] = [];
-              const delta = 2; // сколько страниц показывать вокруг текущей
-
-              // Всегда показываем первую страницу
+              const delta = 2;
               pages.push(0);
-
               const rangeStart = Math.max(1, currentPage - delta);
               const rangeEnd = Math.min(totalPages - 2, currentPage + delta);
-
               if (rangeStart > 1) pages.push('...');
               for (let i = rangeStart; i <= rangeEnd; i++) pages.push(i);
               if (rangeEnd < totalPages - 2) pages.push('...');
-
-              // Всегда показываем последнюю страницу (если больше 1)
               if (totalPages > 1) pages.push(totalPages - 1);
 
               return (
                 <div className="flex justify-center items-center gap-1.5 mt-12 flex-wrap">
-                  {/* В начало */}
-                  <button
-                    disabled={currentPage === 0}
-                    onClick={() => setCurrentPage(0)}
-                    className="px-3 py-2 bg-white border border-gray-200 rounded-xl font-bold disabled:opacity-30 hover:bg-blue-50 hover:border-blue-300 transition-all text-sm"
-                    title="В начало"
-                  >
-                    «
-                  </button>
-                  {/* Назад */}
-                  <button
-                    disabled={currentPage === 0}
-                    onClick={() => setCurrentPage(p => p - 1)}
-                    className="px-3 py-2 bg-white border border-gray-200 rounded-xl font-bold disabled:opacity-30 hover:bg-blue-50 hover:border-blue-300 transition-all text-sm"
-                    title="Назад"
-                  >
-                    ‹
-                  </button>
-
-                  {/* Номера страниц */}
+                  <button disabled={currentPage === 0} onClick={() => setCurrentPage(0)} className="px-3 py-2 bg-white border border-gray-200 rounded-xl font-bold disabled:opacity-30 hover:bg-blue-50 hover:border-blue-300 transition-all text-sm">«</button>
+                  <button disabled={currentPage === 0} onClick={() => setCurrentPage(p => p - 1)} className="px-3 py-2 bg-white border border-gray-200 rounded-xl font-bold disabled:opacity-30 hover:bg-blue-50 hover:border-blue-300 transition-all text-sm">‹</button>
                   {pages.map((p, idx) =>
                     p === '...' ? (
                       <span key={`dots-${idx}`} className="px-2 py-2 text-gray-400 font-bold select-none">…</span>
                     ) : (
-                      <button
-                        key={p}
-                        onClick={() => setCurrentPage(p)}
-                        className={`min-w-[40px] px-3 py-2 rounded-xl font-bold text-sm transition-all ${p === currentPage
-                          ? 'bg-blue-600 text-white shadow-md shadow-blue-200 border border-blue-600'
-                          : 'bg-white border border-gray-200 hover:bg-blue-50 hover:border-blue-300 text-gray-700'
-                          }`}
-                      >
+                      <button key={p} onClick={() => setCurrentPage(p)} className={`min-w-[40px] px-3 py-2 rounded-xl font-bold text-sm transition-all ${p === currentPage ? 'bg-blue-600 text-white shadow-md shadow-blue-200 border border-blue-600' : 'bg-white border border-gray-200 hover:bg-blue-50 hover:border-blue-300 text-gray-700'}`}>
                         {p + 1}
                       </button>
                     )
                   )}
-
-                  {/* Вперёд */}
-                  <button
-                    disabled={currentPage === totalPages - 1}
-                    onClick={() => setCurrentPage(p => p + 1)}
-                    className="px-3 py-2 bg-white border border-gray-200 rounded-xl font-bold disabled:opacity-30 hover:bg-blue-50 hover:border-blue-300 transition-all text-sm"
-                    title="Вперёд"
-                  >
-                    ›
-                  </button>
-                  {/* В конец */}
-                  <button
-                    disabled={currentPage === totalPages - 1}
-                    onClick={() => setCurrentPage(totalPages - 1)}
-                    className="px-3 py-2 bg-white border border-gray-200 rounded-xl font-bold disabled:opacity-30 hover:bg-blue-50 hover:border-blue-300 transition-all text-sm"
-                    title="В конец"
-                  >
-                    »
-                  </button>
-
-                  {/* Текст-подсказка */}
-                  <span className="ml-3 text-sm text-gray-400 font-medium hidden sm:inline">
-                    Страница {currentPage + 1} из {totalPages}
-                  </span>
+                  <button disabled={currentPage === totalPages - 1} onClick={() => setCurrentPage(p => p + 1)} className="px-3 py-2 bg-white border border-gray-200 rounded-xl font-bold disabled:opacity-30 hover:bg-blue-50 hover:border-blue-300 transition-all text-sm">›</button>
+                  <button disabled={currentPage === totalPages - 1} onClick={() => setCurrentPage(totalPages - 1)} className="px-3 py-2 bg-white border border-gray-200 rounded-xl font-bold disabled:opacity-30 hover:bg-blue-50 hover:border-blue-300 transition-all text-sm">»</button>
+                  <span className="ml-3 text-sm text-gray-400 font-medium hidden sm:inline">Страница {currentPage + 1} из {totalPages}</span>
                 </div>
               );
             })()}

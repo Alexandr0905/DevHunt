@@ -7,17 +7,28 @@ interface Props {
     isFavorite?: boolean;
     onToggleFavorite?: (vacancyId: number) => void;
     isAuthenticated: boolean;
+    isTracked?: boolean;
+    onTrack?: (vacancyId: number) => void;
+    onUntrack?: (vacancyId: number) => void; // 1. Добавили в интерфейс
 }
 
-export default function VacancyCard({ vacancy, isFavorite, onToggleFavorite, isAuthenticated }: Props) {
+// 2. Добавили onUntrack в список принимаемых параметров
+export default function VacancyCard({
+    vacancy,
+    isFavorite,
+    onToggleFavorite,
+    isAuthenticated,
+    isTracked,
+    onTrack,
+    onUntrack
+}: Props) {
     return (
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-all relative group">
 
-            {/* Кнопка добавления в избранное */}
             {isAuthenticated && onToggleFavorite && (
                 <button
                     onClick={(e) => {
-                        e.stopPropagation(); // <-- ВОТ ОНО! Блокируем всплытие клика к родителю
+                        e.stopPropagation();
                         onToggleFavorite(vacancy.id);
                     }}
                     className="absolute top-4 right-4 p-2 rounded-full hover:bg-gray-50 transition-colors z-10"
@@ -60,16 +71,54 @@ export default function VacancyCard({ vacancy, isFavorite, onToggleFavorite, isA
                 <span className="text-xs text-gray-400 font-medium tracking-wide uppercase">
                     Источник: {vacancy.source}
                 </span>
-                {/* Кнопке отклика тоже нужно запретить всплытие, чтобы не открывалась модалка при переходе по ссылке */}
-                <a
-                    href={vacancy.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => e.stopPropagation()}
-                    className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-5 rounded-lg transition-colors"
-                >
-                    Откликнуться
-                </a>
+
+                <div className="flex gap-3 items-center">
+                    {/* 3. Логика с использованием onUntrack */}
+                    {isTracked ? (
+                        <div className="flex items-center gap-2">
+                            <span className="px-3 py-2 bg-gray-100 text-gray-500 font-bold rounded-lg text-sm flex items-center gap-2 cursor-default">
+                                👀 Просмотрено
+                            </span>
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (onUntrack) onUntrack(vacancy.id);
+                                }}
+                                className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                                title="Отменить просмотр"
+                            >
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
+                    ) : (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                if (onTrack) onTrack(vacancy.id);
+                            }}
+                            className="bg-blue-50 text-blue-600 hover:bg-blue-100 font-bold py-2 px-4 rounded-lg transition-colors text-sm"
+                        >
+                            В трекер
+                        </button>
+                    )}
+
+                    <a
+                        href={vacancy.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            if (onTrack && !isTracked) {
+                                onTrack(vacancy.id);
+                            }
+                        }}
+                        className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-5 rounded-lg transition-colors text-sm"
+                    >
+                        На сайт
+                    </a>
+                </div>
             </div>
         </div>
     );
