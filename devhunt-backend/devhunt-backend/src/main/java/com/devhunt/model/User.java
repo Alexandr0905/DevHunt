@@ -39,8 +39,4 @@ public class User {
     )
     @Builder.Default
     private Set<Vacancy> favorites = new HashSet<>();
-
-    @Column(name = "role", nullable = false)
-    @Builder.Default
-    private String role = "ROLE_USER";
 }

@@ -2,7 +2,6 @@ package com.devhunt.controller;
 
 import com.devhunt.model.Vacancy;
 import com.devhunt.model.enums.Grade;
-import com.devhunt.repository.SearchKeywordRepository;
 import com.devhunt.repository.VacancyRepository;
 import com.devhunt.repository.VacancySpecification;
 import com.devhunt.service.CurrencyService;
@@ -19,8 +18,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import java.util.Map;
 import java.util.List;
-import com.devhunt.repository.SearchKeywordRepository;
-import com.devhunt.model.SearchKeyword;
 
 import java.math.BigDecimal;
 
@@ -34,7 +31,6 @@ public class VacancyController {
     private final VacancyScheduler vacancyScheduler; // Внедряем шедулер
     private final CurrencyService currencyService; // Внедряем сервис конвертации валют
     private final StatisticsService statisticsService;
-    private final SearchKeywordRepository searchKeywordRepository;
 
     @GetMapping
     public Page<Vacancy> getVacancies(
@@ -72,20 +68,5 @@ public class VacancyController {
     @GetMapping("/stats/directions")
     public List<Map<String, Object>> getDirectionStats() {
         return statisticsService.getDirectionStats();
-    }
-
-    @GetMapping("/stats/timeline")
-    public ResponseEntity<Map<String, Long>> getTimelineStats(
-            @RequestParam(required = false) String direction,
-            @RequestParam(defaultValue = "6") Integer months) {
-        return ResponseEntity.ok(statisticsService.getVacanciesTimeline(direction, months));
-    }
-
-    @GetMapping("/keywords")
-    public ResponseEntity<List<String>> getAvailableKeywords() {
-        List<String> words = searchKeywordRepository.findAll().stream()
-                .map(SearchKeyword::getKeyword)
-                .toList();
-        return ResponseEntity.ok(words);
     }
 }
