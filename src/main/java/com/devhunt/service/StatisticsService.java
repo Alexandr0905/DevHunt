@@ -7,6 +7,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -87,6 +89,29 @@ public class StatisticsService {
             res.put("grades", gradeStats);
             return res;
         }).sorted((a, b) -> (Integer)b.get("count") - (Integer)a.get("count")).collect(Collectors.toList());
+    }
+
+    public Map<String, Long> getVacanciesTimeline(String direction, Integer months) {
+        int period = (months != null && months > 0) ? months : 6; // По умолчанию 6 месяцев
+        LocalDateTime cutoffDate = LocalDateTime.now().minusMonths(period);
+        boolean isShortTerm = period <= 1; // Если 1 месяц, будем показывать по дням
+
+        return vacancyRepository.findAll().stream()
+                .filter(v -> v.getCreatedAt() != null && v.getCreatedAt().isAfter(cutoffDate))
+                .filter(v -> direction == null || direction.isEmpty() ||
+                        (v.getDirection() != null && v.getDirection().equalsIgnoreCase(direction)) ||
+                        (v.getTitle() != null && v.getTitle().toLowerCase().contains(direction.toLowerCase())))
+                .collect(Collectors.groupingBy(
+                        v -> {
+                            if (isShortTerm) {
+                                return v.getCreatedAt().format(DateTimeFormatter.ofPattern("dd MMM")); // например: "14 Май"
+                            } else {
+                                return v.getCreatedAt().format(DateTimeFormatter.ofPattern("yyyy-MM")); // например: "2026-05"
+                            }
+                        },
+                        TreeMap::new, // Сортировка по порядку дат
+                        Collectors.counting()
+                ));
     }
 
     private String detectDirection(Vacancy v) {
