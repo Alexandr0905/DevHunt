@@ -10,14 +10,13 @@ import VacancyModal from './components/VacancyModal';
 import StatsDashboard from './components/StatsDashboard';
 import ProfilePanel from './components/ProfilePanel';
 import KanbanBoard from './components/KanbanBoard';
+import AdminPanel from './components/AdminPanel';
 
-// Добавили 'kanban' в типы
-type ViewMode = 'all' | 'favorites' | 'stats' | 'profile' | 'internships' | 'kanban';
+type ViewMode = 'all' | 'favorites' | 'stats' | 'profile' | 'kanban' | 'admin';
 
 function App() {
   const [vacancies, setVacancies] = useState<Vacancy[]>([]);
   const [favoriteIds, setFavoriteIds] = useState<Set<number>>(new Set());
-  // Стейт для отслеженных вакансий (добавленных на доску)
   const [trackedIds, setTrackedIds] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -29,15 +28,21 @@ function App() {
   const [viewMode, setViewMode] = useState<ViewMode>('all');
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(localStorage.getItem('user_email'));
-  const [filters, setFilters] = useState<FilterValues>({ keyword: '', direction: '', minSalaryRub: '', grade: '' });
+
+  const [userRole, setUserRole] = useState<string>('ROLE_USER');
+
+  const [filters, setFilters] = useState<FilterValues>({
+    keyword: '',
+    direction: '',
+    minSalaryRub: '',
+    grade: ''
+  });
 
   const isAuthenticated = !!userEmail;
 
-  // Загрузка ID вакансий, которые уже на доске
   const fetchTracked = async () => {
     if (!isAuthenticated) return;
     try {
-      // Убрали headers с ID!
       const data = await api.fetchWithAuth('/kanban');
       setTrackedIds(new Set(data.map((app: any) => app.vacancy.id)));
     } catch (e) {
@@ -59,7 +64,7 @@ function App() {
   };
 
   const fetchData = async () => {
-    if (viewMode === 'profile' || viewMode === 'kanban') return;
+    if (viewMode === 'profile' || viewMode === 'kanban' || viewMode === 'admin') return;
 
     setLoading(true);
     try {
@@ -78,9 +83,7 @@ function App() {
         if (filters.keyword) queryParams.append('keyword', filters.keyword);
         if (filters.direction && filters.direction !== 'Все направления') queryParams.append('direction', filters.direction);
         if (filters.minSalaryRub) queryParams.append('minSalaryRub', filters.minSalaryRub);
-
-        const targetGrade = viewMode === 'internships' ? 'INTERN' : filters.grade;
-        if (targetGrade && targetGrade !== 'Любой грейд') queryParams.append('grade', targetGrade);
+        if (filters.grade && filters.grade !== 'Любой грейд') queryParams.append('grade', filters.grade);
 
         const response = await fetch(`http://localhost:8080/api/vacancies?${queryParams.toString()}`);
         const data: PageResponse<Vacancy> = await response.json();
@@ -91,7 +94,7 @@ function App() {
         if (isAuthenticated) {
           const favs: Vacancy[] = await api.fetchWithAuth('/favorites');
           setFavoriteIds(new Set(favs.map(v => v.id)));
-          fetchTracked(); // Грузим статусы трекера
+          fetchTracked();
         }
       }
     } catch (err: any) {
@@ -105,9 +108,23 @@ function App() {
     fetchData();
   }, [viewMode, filters, currentPage, isAuthenticated]);
 
-  // Загружаем трекер при логине
   useEffect(() => {
     fetchTracked();
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    const fetchUserRole = async () => {
+      if (!isAuthenticated) return;
+      try {
+        const user = await api.fetchWithAuth('/users/profile/me');
+        if (user && user.role) {
+          setUserRole(user.role);
+        }
+      } catch (e) {
+        console.error("Не удалось получить профиль", e);
+      }
+    };
+    fetchUserRole();
   }, [isAuthenticated]);
 
   const handleToggleFavorite = async (id: number) => {
@@ -120,14 +137,12 @@ function App() {
     }
   };
 
-  // Функция добавления на доску Канбан
   const handleTrack = async (vacancyId: number) => {
     if (!isAuthenticated) {
       setIsAuthModalOpen(true);
       return;
     }
     try {
-      // Убрали headers с ID!
       await api.fetchWithAuth(`/kanban/apply/${vacancyId}`, { method: 'POST' });
       setTrackedIds(prev => new Set(prev).add(vacancyId));
     } catch (e) {
@@ -164,33 +179,43 @@ function App() {
       </nav>
 
       <main className="max-w-4xl mx-auto px-4">
-        {/* Навигация по вкладкам */}
         <div className="flex flex-wrap gap-6 mb-8 border-b border-gray-200">
-          <button onClick={() => { setViewMode('all'); setCurrentPage(0); }} className={`text-lg font-bold pb-3 transition-all ${viewMode === 'all' ? 'text-blue-600 border-b-4 border-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>Лента вакансий</button>
-          <button onClick={() => { setViewMode('internships'); setCurrentPage(0); }} className={`text-lg font-bold pb-3 transition-all ${viewMode === 'internships' ? 'text-blue-600 border-b-4 border-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>Стажировки</button>
-          <button onClick={() => setViewMode('stats')} className={`text-lg font-bold pb-3 transition-all ${viewMode === 'stats' ? 'text-blue-600 border-b-4 border-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>Аналитика</button>
+          <button onClick={() => { setViewMode('all'); setCurrentPage(0); }} className={`text-lg font-bold pb-3 transition-all ${viewMode === 'all' ? 'text-blue-600 border-b-4 border-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>
+            Позиции
+          </button>
+          <button onClick={() => setViewMode('stats')} className={`text-lg font-bold pb-3 transition-all ${viewMode === 'stats' ? 'text-blue-600 border-b-4 border-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>
+            Аналитика
+          </button>
           {isAuthenticated && (
             <>
-              <button onClick={() => setViewMode('favorites')} className={`text-lg font-bold pb-3 transition-all ${viewMode === 'favorites' ? 'text-blue-600 border-b-4 border-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>Избранное ({favoriteIds.size})</button>
-              {/* НОВАЯ ВКЛАДКА КАНБАНА */}
-              <button onClick={() => setViewMode('kanban')} className={`text-lg font-bold pb-3 transition-all ${viewMode === 'kanban' ? 'text-blue-600 border-b-4 border-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>Мои отклики</button>
-              <button onClick={() => setViewMode('profile')} className={`text-lg font-bold pb-3 transition-all ${viewMode === 'profile' ? 'text-blue-600 border-b-4 border-blue-600' : 'text-gray-400 hover:text-gray-600'} sm:hidden`}>Профиль</button>
+              <button onClick={() => setViewMode('favorites')} className={`text-lg font-bold pb-3 transition-all ${viewMode === 'favorites' ? 'text-blue-600 border-b-4 border-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>
+                Избранное ({favoriteIds.size})
+              </button>
+              <button onClick={() => setViewMode('kanban')} className={`text-lg font-bold pb-3 transition-all ${viewMode === 'kanban' ? 'text-blue-600 border-b-4 border-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>
+                Мои отклики
+              </button>
+              <button onClick={() => setViewMode('profile')} className={`text-lg font-bold pb-3 transition-all ${viewMode === 'profile' ? 'text-blue-600 border-b-4 border-blue-600' : 'text-gray-400 hover:text-gray-600'} sm:hidden`}>
+                Профиль
+              </button>
             </>
+          )}
+          {isAuthenticated && userRole === 'ROLE_ADMIN' && (
+            <button onClick={() => setViewMode('admin')} className={`text-lg font-bold pb-3 transition-all ${viewMode === 'admin' ? 'text-purple-600 border-b-4 border-purple-600' : 'text-gray-400 hover:text-purple-500'}`}>
+              Админ панель
+            </button>
           )}
         </div>
 
         {viewMode === 'profile' && isAuthenticated && <ProfilePanel />}
         {viewMode === 'stats' && <StatsDashboard vacancies={vacancies} />}
-
-        {/* РЕНДЕР КАНБАН ДОСКИ */}
         {viewMode === 'kanban' && isAuthenticated && <KanbanBoard onSelectVacancy={setSelectedVacancy} />}
+        {viewMode === 'admin' && isAuthenticated && userRole === 'ROLE_ADMIN' && <AdminPanel />}
 
-        {(viewMode === 'all' || viewMode === 'favorites' || viewMode === 'internships') && (
+        {(viewMode === 'all' || viewMode === 'favorites') && (
           <>
-            {(viewMode === 'all' || viewMode === 'internships') && (
+            {viewMode === 'all' && (
               <FilterPanel
                 onFilterChange={(f) => { setFilters(f); setCurrentPage(0); }}
-                hideGrade={viewMode === 'internships'}
               />
             )}
 
@@ -209,8 +234,8 @@ function App() {
                       isAuthenticated={isAuthenticated}
                       isFavorite={favoriteIds.has(v.id)}
                       onToggleFavorite={(id) => handleToggleFavorite(id)}
-                      isTracked={trackedIds.has(v.id)} // Передаем флаг "на доске ли"
-                      onTrack={(id) => handleTrack(id)} // Передаем функцию добавления
+                      isTracked={trackedIds.has(v.id)} // ИСПРАВЛЕНО: Вернули корректную булеву проверку
+                      onTrack={(id) => handleTrack(id)}
                       onUntrack={(id) => handleUntrack(id)}
                     />
                   </div>
@@ -219,7 +244,7 @@ function App() {
             )}
 
             {/* Пагинация */}
-            {(viewMode === 'all' || viewMode === 'internships') && totalPages > 1 && (() => {
+            {viewMode === 'all' && totalPages > 1 && (() => {
               const pages: (number | '...')[] = [];
               const delta = 2;
               pages.push(0);

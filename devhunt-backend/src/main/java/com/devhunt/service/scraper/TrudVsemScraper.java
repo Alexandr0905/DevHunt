@@ -1,7 +1,9 @@
 package com.devhunt.service.scraper;
 
+import com.devhunt.model.SearchKeyword;
 import com.devhunt.model.Vacancy;
 import com.devhunt.model.enums.Grade;
+import com.devhunt.repository.SearchKeywordRepository;
 import com.devhunt.service.CurrencyService;
 import com.fasterxml.jackson.databind.JsonNode;
 import lombok.RequiredArgsConstructor;
@@ -10,8 +12,11 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
 import java.math.BigDecimal;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Component
@@ -19,6 +24,7 @@ import java.util.List;
 public class TrudVsemScraper implements JobScraper {
 
     private final CurrencyService currencyService;
+    private final SearchKeywordRepository keywordRepository; // <-- Внедряем БД с ключами
     private final RestClient restClient = RestClient.create();
 
     @Override
@@ -29,14 +35,27 @@ public class TrudVsemScraper implements JobScraper {
     @Override
     public List<Vacancy> scrapeJobs() {
         List<Vacancy> allVacancies = new ArrayList<>();
-        String[] searchQueries = {"Java", "Python", "Frontend", "Аналитик", "DevOps"};
 
-        log.info("Starting mass scraping from TrudVsem...");
+        // 1. Достаем динамические слова из нашей базы
+        List<String> searchQueries = keywordRepository.findAll().stream()
+                .map(SearchKeyword::getKeyword)
+                .collect(Collectors.toList());
+
+        // 2. Фоллбэк, если кто-то случайно удалит все слова в админке
+        if (searchQueries.isEmpty()) {
+            log.warn("Keyword database is empty! Using default fallback 'Java'");
+            searchQueries.add("Java");
+        }
+
+        log.info("Starting mass scraping from TrudVsem using {} keywords...", searchQueries.size());
 
         for (String query : searchQueries) {
             try {
+                // 3. Кодируем строку (обязательно для русских букв и символов типа C++)
+                String encodedQuery = URLEncoder.encode(query, StandardCharsets.UTF_8);
+
                 // Официальное, открытое государственное API
-                String url = "https://opendata.trudvsem.ru/api/v1/vacancies?text=" + query + "&limit=50";
+                String url = "https://opendata.trudvsem.ru/api/v1/vacancies?text=" + encodedQuery + "&limit=50";
 
                 JsonNode root = restClient.get()
                         .uri(url)
