@@ -103,6 +103,15 @@ export default function AdminPanel() {
         }
     };
 
+    const handleSimulatePush = async () => {
+        try {
+            await api.fetchWithAuth('/demo/simulate-push', { method: 'POST' });
+            // Сообщение об успехе не показываем, так как сразу зазвонит телефон
+        } catch (e) {
+            alert("Ошибка при симуляции пуша");
+        }
+    };
+
     if (loading) return <div className="text-center py-20 text-gray-400 font-bold">Загрузка админки...</div>;
 
     return (
@@ -120,7 +129,7 @@ export default function AdminPanel() {
                             onClick={handleTriggerScrape}
                             className="bg-gray-900 hover:bg-black text-white px-6 py-3 rounded-xl font-bold shadow-md transition-all w-full sm:w-auto"
                         >
-                            ⚡ Запустить парсеры
+                            Запустить парсеры
                         </button>
                         {scrapeStatus && <span className="text-sm font-bold text-green-600 bg-green-50 px-3 py-2 rounded-lg">{scrapeStatus}</span>}
                     </div>
@@ -211,6 +220,19 @@ export default function AdminPanel() {
                         </tbody>
                     </table>
                 </div>
+            </div>
+            <div className="mb-8 p-4 bg-gray-50 border border-gray-200 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-4 opacity-60 hover:opacity-100 transition-opacity">
+                <div>
+                    <h3 className="font-bold text-gray-600 text-sm mb-0.5">Режим отладки (Demo)</h3>
+                    <p className="text-xs text-gray-500">Симуляция фонового триггера отправки уведомления.</p>
+                </div>
+                <button
+                    onClick={handleSimulatePush}
+                    className="px-4 py-2 text-sm bg-gray-200 text-gray-700 font-bold rounded-lg hover:bg-gray-300 transition-colors flex items-center gap-2 border border-gray-300"
+                >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                    Тест Push-канала
+                </button>
             </div>
         </div>
     );
