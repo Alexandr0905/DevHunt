@@ -1,6 +1,5 @@
 // src/App.tsx
 
-import { useEffect, useState } from 'react';
 import { api } from './api';
 import type { Vacancy, PageResponse } from './types';
 import VacancyCard from './components/VacancyCard';
@@ -11,6 +10,7 @@ import StatsDashboard from './components/StatsDashboard';
 import ProfilePanel from './components/ProfilePanel';
 import KanbanBoard from './components/KanbanBoard';
 import AdminPanel from './components/AdminPanel';
+import { useEffect, useState, useCallback } from 'react';
 
 type ViewMode = 'all' | 'favorites' | 'stats' | 'profile' | 'kanban' | 'admin';
 
@@ -37,6 +37,12 @@ function App() {
     minSalaryRub: '',
     grade: ''
   });
+
+  // Замораживаем функцию, чтобы она не пересоздавалась на каждый рендер
+  const handleFilterChange = useCallback((f: FilterValues) => {
+    setFilters(f);
+    setCurrentPage(0); // Сброс на первую страницу только когда РЕАЛЬНО меняются фильтры
+  }, []);
 
   const isAuthenticated = !!userEmail;
 
@@ -73,7 +79,7 @@ function App() {
         setVacancies(data);
         setFavoriteIds(new Set(data.map(v => v.id)));
       } else {
-        const size = viewMode === 'stats' ? '100' : '10';
+        const size = viewMode === 'stats' ? '5000' : '10';
 
         const queryParams = new URLSearchParams({
           page: viewMode === 'stats' ? '0' : currentPage.toString(),
@@ -215,7 +221,7 @@ function App() {
           <>
             {viewMode === 'all' && (
               <FilterPanel
-                onFilterChange={(f) => { setFilters(f); setCurrentPage(0); }}
+                onFilterChange={handleFilterChange}
               />
             )}
 
@@ -234,7 +240,7 @@ function App() {
                       isAuthenticated={isAuthenticated}
                       isFavorite={favoriteIds.has(v.id)}
                       onToggleFavorite={(id) => handleToggleFavorite(id)}
-                      isTracked={trackedIds.has(v.id)} // ИСПРАВЛЕНО: Вернули корректную булеву проверку
+                      isTracked={trackedIds.has(v.id)}
                       onTrack={(id) => handleTrack(id)}
                       onUntrack={(id) => handleUntrack(id)}
                     />

@@ -20,7 +20,6 @@ export default function KanbanBoard({ onSelectVacancy }: Props) {
     const [applications, setApplications] = useState<JobApplication[]>([]);
     const [loading, setLoading] = useState(true);
 
-    // Стейт для хранения свернутых колонок (храним ID тех, что свернуты)
     const [collapsedCols, setCollapsedCols] = useState<Set<ApplicationStatus>>(new Set());
 
     useEffect(() => {
@@ -77,35 +76,35 @@ export default function KanbanBoard({ onSelectVacancy }: Props) {
     if (loading) return <div className="text-center py-20 animate-pulse text-gray-500 font-bold">Загрузка доски...</div>;
 
     return (
-        <div className="p-2 sm:p-6">
-            <h2 className="text-3xl font-black mb-8 text-gray-800">Мои отклики</h2>
+        <div className="p-2 sm:p-6 flex flex-col h-full">
+            <h2 className="text-3xl font-black mb-8 text-gray-800 shrink-0">Мои отклики</h2>
 
-            {/* items-start - ВАЖНО: не дает колонкам растягиваться по высоте соседей */}
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4 items-start">
+            {/* ИСПРАВЛЕНО: Сетка на 3 колонки. Первые 3 займут верхний ряд, оставшиеся 2 перенесутся вниз */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-start pb-8">
                 {COLUMNS.map(col => {
                     const isCollapsed = collapsedCols.has(col.id);
                     const colApps = applications.filter(a => a.status === col.id);
 
                     return (
-                        <div key={col.id} className="bg-gray-50 rounded-2xl p-3 border border-gray-200 flex flex-col max-h-[75vh] transition-all">
+                        <div key={col.id} className="w-full bg-gray-50 rounded-2xl p-4 border border-gray-200 flex flex-col max-h-[75vh] transition-all shadow-sm">
 
-                            {/* Шапка колонки (кликабельная для сворачивания) */}
+                            {/* Шапка колонки */}
                             <div
                                 onClick={() => toggleColumn(col.id)}
-                                className="flex justify-between items-center mb-3 px-2 cursor-pointer hover:bg-gray-100 p-2 rounded-xl transition-colors group select-none"
+                                className="flex justify-between items-center mb-3 px-2 cursor-pointer hover:bg-gray-200 p-2 rounded-xl transition-colors group select-none"
                             >
                                 <div className="flex items-center gap-2">
                                     <svg className={`w-5 h-5 text-gray-400 group-hover:text-gray-600 transition-transform ${isCollapsed ? '-rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
                                     </svg>
-                                    <h3 className="font-bold text-gray-700 text-sm">{col.title}</h3>
+                                    <h3 className="font-black text-gray-700 text-sm uppercase tracking-wide">{col.title}</h3>
                                 </div>
-                                <span className="bg-white px-2 py-1 rounded-md text-xs font-black shadow-sm text-gray-500">
+                                <span className="bg-white px-2 py-1 rounded-md text-xs font-black shadow-sm text-gray-500 border border-gray-100">
                                     {colApps.length}
                                 </span>
                             </div>
 
-                            {/* Список карточек (скрыт, если колонка свернута) */}
+                            {/* Список карточек */}
                             {!isCollapsed && (
                                 <div className="space-y-3 overflow-y-auto pr-1 pb-2 scroll-smooth">
                                     {colApps.map(app => (
@@ -116,16 +115,16 @@ export default function KanbanBoard({ onSelectVacancy }: Props) {
                                         >
                                             <button
                                                 onClick={(e) => { e.stopPropagation(); deleteApp(app.id); }}
-                                                className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-500 transition-all"
+                                                className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-500 transition-all bg-white rounded-lg shadow-sm border border-gray-100"
                                                 title="Удалить из трекера"
                                             >
-                                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
                                                 </svg>
                                             </button>
 
-                                            <div className="font-bold text-sm mb-1 line-clamp-2 pr-6">{app.vacancy.title}</div>
-                                            <div className="text-xs opacity-70 font-bold mb-3">{app.vacancy.company}</div>
+                                            <div className="font-bold text-sm mb-1 line-clamp-2 pr-6 leading-snug">{app.vacancy.title}</div>
+                                            <div className="text-xs opacity-70 font-bold mb-3 line-clamp-1">{app.vacancy.company}</div>
 
                                             {app.vacancy.salaryUsd && (
                                                 <div className="text-sm font-black mb-3">
@@ -133,13 +132,12 @@ export default function KanbanBoard({ onSelectVacancy }: Props) {
                                                 </div>
                                             )}
 
-                                            {/* Ссылка на оригинальный сайт */}
                                             <a
                                                 href={app.vacancy.url}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 onClick={(e) => e.stopPropagation()}
-                                                className="block w-full text-center py-1.5 mb-3 bg-white/50 border border-black/5 hover:bg-white rounded-lg text-xs font-bold transition-colors"
+                                                className="block w-full text-center py-1.5 mb-3 bg-white/50 border border-black/5 hover:bg-white hover:border-blue-200 rounded-lg text-xs font-bold transition-all"
                                             >
                                                 На сайт
                                             </a>
@@ -151,7 +149,7 @@ export default function KanbanBoard({ onSelectVacancy }: Props) {
                                                         <button
                                                             key={targetCol.id}
                                                             onClick={(e) => { e.stopPropagation(); changeStatus(app.id, targetCol.id); }}
-                                                            className="text-[9px] font-bold px-2 py-1 bg-white border border-gray-200 rounded text-gray-600 hover:bg-gray-100 transition-colors uppercase"
+                                                            className="text-[9px] font-bold px-2 py-1 bg-white border border-gray-200 rounded text-gray-600 hover:bg-gray-100 hover:border-gray-300 transition-all uppercase shadow-sm"
                                                         >
                                                             {targetCol.title.split(' ')[0]}
                                                         </button>
@@ -161,8 +159,8 @@ export default function KanbanBoard({ onSelectVacancy }: Props) {
                                         </div>
                                     ))}
                                     {colApps.length === 0 && (
-                                        <div className="text-center text-xs text-gray-400 py-6 border-2 border-dashed border-gray-200 rounded-xl">
-                                            Пусто
+                                        <div className="text-center text-xs text-gray-400 py-8 border-2 border-dashed border-gray-200 rounded-xl font-bold bg-white/50">
+                                            Пока пусто
                                         </div>
                                     )}
                                 </div>
