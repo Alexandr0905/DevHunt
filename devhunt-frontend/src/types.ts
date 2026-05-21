@@ -29,3 +29,12 @@ export interface UserProfile {
     emailNotifications: boolean;
     dailyDigest: boolean;
 }
+
+export type ApplicationStatus = 'VIEWED' | 'APPLIED' | 'INTERVIEW' | 'OFFER' | 'REJECTED';
+
+export interface JobApplication {
+    id: number;
+    vacancy: Vacancy;
+    status: ApplicationStatus;
+    createdAt: string;
+}

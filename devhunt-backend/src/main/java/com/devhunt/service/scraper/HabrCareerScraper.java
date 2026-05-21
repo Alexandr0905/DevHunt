@@ -8,12 +8,15 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import com.devhunt.model.SearchKeyword;
+import com.devhunt.repository.SearchKeywordRepository;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Component
@@ -22,6 +25,7 @@ public class HabrCareerScraper implements JobScraper {
 
     private final CurrencyService currencyService;
     private final RestClient restClient = RestClient.create();
+    private final SearchKeywordRepository keywordRepository;
 
     @Override
     public String getSourceName() {
@@ -31,13 +35,25 @@ public class HabrCareerScraper implements JobScraper {
     @Override
     public List<Vacancy> scrapeJobs() {
         List<Vacancy> allVacancies = new ArrayList<>();
-        String[] searchQueries = {"Java", "Python", "Frontend", "React", "DevOps", "QA", "Data Science", "Mobile"};
 
-        log.info("Starting mass scraping from Habr Career API (with FULL descriptions)...");
+        // 1. Динамически достаем слова из базы
+        List<String> searchQueries = keywordRepository.findAll().stream()
+                .map(SearchKeyword::getKeyword)
+                .collect(Collectors.toList());
+
+        // 2. Если база пуста (на всякий случай), используем фоллбэк
+        if (searchQueries.isEmpty()) {
+            log.warn("Keyword database is empty! Using default fallback 'Java'");
+            searchQueries.add("Java");
+        }
+
+        log.info("Starting mass scraping from Habr Career API using {} keywords...", searchQueries.size());
 
         for (String query : searchQueries) {
             try {
-                String url = "https://career.habr.com/api/frontend/vacancies?q=" + query + "&sort=relevance&type=all&per_page=50";
+                // ВАЖНО: Кодируем запрос, чтобы слова с пробелами (Data Science) не ломали URL
+                String encodedQuery = java.net.URLEncoder.encode(query, java.nio.charset.StandardCharsets.UTF_8);
+                String url = "https://career.habr.com/api/frontend/vacancies?q=" + encodedQuery + "&sort=relevance&type=all&per_page=50";
 
                 JsonNode root = restClient.get()
                         .uri(url)

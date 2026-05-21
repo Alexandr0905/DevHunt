@@ -25,7 +25,7 @@ export default function StatsDashboard({ vacancies }: Props) {
     const [directions, setDirections] = useState<DirectionStat[]>([]);
     const [selectedDir, setSelectedDir] = useState<DirectionStat | null>(null);
     const [loading, setLoading] = useState(true);
-    const [serverError, setServerError] = useState(false); // Флаг ошибки бэкенда
+    const [serverError, setServerError] = useState(false);
 
     useEffect(() => {
         const loadStats = async () => {
@@ -41,7 +41,6 @@ export default function StatsDashboard({ vacancies }: Props) {
                     })
                 ]);
 
-                // Жесткая проверка: если пришел не массив, ставим пустой массив
                 const safeSkills = Array.isArray(sRes) ? sRes : [];
                 const safeDirections = Array.isArray(dRes) ? dRes : [];
 
@@ -51,7 +50,7 @@ export default function StatsDashboard({ vacancies }: Props) {
 
             } catch (e) {
                 console.error("Ошибка загрузки статистики:", e);
-                setServerError(true); // Включаем показ ошибки
+                setServerError(true);
             } finally {
                 setLoading(false);
             }
@@ -158,8 +157,8 @@ export default function StatsDashboard({ vacancies }: Props) {
                             key={d.name}
                             onClick={() => setSelectedDir(d)}
                             className={`w-full text-left p-4 rounded-2xl transition-all border ${selectedDir?.name === d.name
-                                    ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-200 scale-[1.02]'
-                                    : 'bg-white border-gray-100 text-gray-600 hover:border-blue-300'
+                                ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-200 scale-[1.02]'
+                                : 'bg-white border-gray-100 text-gray-600 hover:border-blue-300'
                                 }`}
                         >
                             <div className="flex justify-between items-center">

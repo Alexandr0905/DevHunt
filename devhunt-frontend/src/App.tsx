@@ -1,6 +1,5 @@
 // src/App.tsx
 
-import { useEffect, useState } from 'react';
 import { api } from './api';
 import type { Vacancy, PageResponse } from './types';
 import VacancyCard from './components/VacancyCard';
@@ -9,12 +8,16 @@ import AuthModal from './components/AuthModal';
 import VacancyModal from './components/VacancyModal';
 import StatsDashboard from './components/StatsDashboard';
 import ProfilePanel from './components/ProfilePanel';
+import KanbanBoard from './components/KanbanBoard';
+import AdminPanel from './components/AdminPanel';
+import { useEffect, useState, useCallback } from 'react';
 
-type ViewMode = 'all' | 'favorites' | 'stats' | 'profile' | 'internships';
+type ViewMode = 'all' | 'favorites' | 'stats' | 'profile' | 'kanban' | 'admin';
 
 function App() {
   const [vacancies, setVacancies] = useState<Vacancy[]>([]);
   const [favoriteIds, setFavoriteIds] = useState<Set<number>>(new Set());
+  const [trackedIds, setTrackedIds] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -25,13 +28,49 @@ function App() {
   const [viewMode, setViewMode] = useState<ViewMode>('all');
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(localStorage.getItem('user_email'));
-  const [filters, setFilters] = useState<FilterValues>({ keyword: '', direction: '', minSalaryRub: '', grade: '' });
+
+  const [userRole, setUserRole] = useState<string>('ROLE_USER');
+
+  const [filters, setFilters] = useState<FilterValues>({
+    keyword: '',
+    direction: '',
+    minSalaryRub: '',
+    grade: ''
+  });
+
+  // Замораживаем функцию, чтобы она не пересоздавалась на каждый рендер
+  const handleFilterChange = useCallback((f: FilterValues) => {
+    setFilters(f);
+    setCurrentPage(0); // Сброс на первую страницу только когда РЕАЛЬНО меняются фильтры
+  }, []);
 
   const isAuthenticated = !!userEmail;
 
+  const fetchTracked = async () => {
+    if (!isAuthenticated) return;
+    try {
+      const data = await api.fetchWithAuth('/kanban');
+      setTrackedIds(new Set(data.map((app: any) => app.vacancy.id)));
+    } catch (e) {
+      console.error("Не удалось загрузить канбан", e);
+    }
+  };
+
+  const handleUntrack = async (vacancyId: number) => {
+    try {
+      await api.fetchWithAuth(`/kanban/vacancy/${vacancyId}`, { method: 'DELETE' });
+      setTrackedIds(prev => {
+        const next = new Set(prev);
+        next.delete(vacancyId);
+        return next;
+      });
+    } catch (e) {
+      console.error("Ошибка при отмене просмотра", e);
+    }
+  };
+
   const fetchData = async () => {
-    // Не грузим вакансии заново, если открыт профиль
-    if (viewMode === 'profile') return;
+    if (viewMode === 'profile' || viewMode === 'kanban' || viewMode === 'admin') return;
 
     setLoading(true);
     try {
@@ -40,32 +79,17 @@ function App() {
         setVacancies(data);
         setFavoriteIds(new Set(data.map(v => v.id)));
       } else {
-        // Для вкладки 'all' и 'stats' грузим общие данные
-        const size = viewMode === 'stats' ? '100' : '10';
+        const size = viewMode === 'stats' ? '5000' : '10';
 
-        // Собираем параметры аккуратно и РАЗДЕЛЬНО
         const queryParams = new URLSearchParams({
           page: viewMode === 'stats' ? '0' : currentPage.toString(),
           size: size,
         });
 
-        if (filters.keyword) {
-          queryParams.append('keyword', filters.keyword);
-        }
-
-        // Отправляем direction своим отдельным параметром!
-        if (filters.direction && filters.direction !== 'Все направления') {
-          queryParams.append('direction', filters.direction);
-        }
-
-        if (filters.minSalaryRub) {
-          queryParams.append('minSalaryRub', filters.minSalaryRub);
-        }
-
-        const targetGrade = viewMode === 'internships' ? 'INTERN' : filters.grade;
-        if (targetGrade && targetGrade !== 'Любой грейд') {
-          queryParams.append('grade', targetGrade);
-        }
+        if (filters.keyword) queryParams.append('keyword', filters.keyword);
+        if (filters.direction && filters.direction !== 'Все направления') queryParams.append('direction', filters.direction);
+        if (filters.minSalaryRub) queryParams.append('minSalaryRub', filters.minSalaryRub);
+        if (filters.grade && filters.grade !== 'Любой грейд') queryParams.append('grade', filters.grade);
 
         const response = await fetch(`http://localhost:8080/api/vacancies?${queryParams.toString()}`);
         const data: PageResponse<Vacancy> = await response.json();
@@ -76,6 +100,7 @@ function App() {
         if (isAuthenticated) {
           const favs: Vacancy[] = await api.fetchWithAuth('/favorites');
           setFavoriteIds(new Set(favs.map(v => v.id)));
+          fetchTracked();
         }
       }
     } catch (err: any) {
@@ -89,6 +114,25 @@ function App() {
     fetchData();
   }, [viewMode, filters, currentPage, isAuthenticated]);
 
+  useEffect(() => {
+    fetchTracked();
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    const fetchUserRole = async () => {
+      if (!isAuthenticated) return;
+      try {
+        const user = await api.fetchWithAuth('/users/profile/me');
+        if (user && user.role) {
+          setUserRole(user.role);
+        }
+      } catch (e) {
+        console.error("Не удалось получить профиль", e);
+      }
+    };
+    fetchUserRole();
+  }, [isAuthenticated]);
+
   const handleToggleFavorite = async (id: number) => {
     if (favoriteIds.has(id)) {
       await api.fetchWithAuth(`/favorites/${id}`, { method: 'DELETE' });
@@ -96,6 +140,19 @@ function App() {
     } else {
       await api.fetchWithAuth(`/favorites/${id}`, { method: 'POST' });
       setFavoriteIds(prev => new Set(prev).add(id));
+    }
+  };
+
+  const handleTrack = async (vacancyId: number) => {
+    if (!isAuthenticated) {
+      setIsAuthModalOpen(true);
+      return;
+    }
+    try {
+      await api.fetchWithAuth(`/kanban/apply/${vacancyId}`, { method: 'POST' });
+      setTrackedIds(prev => new Set(prev).add(vacancyId));
+    } catch (e) {
+      console.error("Ошибка при добавлении в трекер", e);
     }
   };
 
@@ -128,32 +185,43 @@ function App() {
       </nav>
 
       <main className="max-w-4xl mx-auto px-4">
-        {/* Навигация по вкладкам */}
         <div className="flex flex-wrap gap-6 mb-8 border-b border-gray-200">
-          <button onClick={() => { setViewMode('all'); setCurrentPage(0); }} className={`text-lg font-bold pb-3 transition-all ${viewMode === 'all' ? 'text-blue-600 border-b-4 border-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>Лента вакансий</button>
-          {/* НОВАЯ ВКЛАДКА */}
-          <button onClick={() => { setViewMode('internships'); setCurrentPage(0); }} className={`text-lg font-bold pb-3 transition-all ${viewMode === 'internships' ? 'text-blue-600 border-b-4 border-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>Стажировки</button>
-          <button onClick={() => setViewMode('stats')} className={`text-lg font-bold pb-3 transition-all ${viewMode === 'stats' ? 'text-blue-600 border-b-4 border-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>Аналитика</button>
+          <button onClick={() => { setViewMode('all'); setCurrentPage(0); }} className={`text-lg font-bold pb-3 transition-all ${viewMode === 'all' ? 'text-blue-600 border-b-4 border-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>
+            Позиции
+          </button>
+          <button onClick={() => setViewMode('stats')} className={`text-lg font-bold pb-3 transition-all ${viewMode === 'stats' ? 'text-blue-600 border-b-4 border-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>
+            Аналитика
+          </button>
           {isAuthenticated && (
             <>
-              <button onClick={() => setViewMode('favorites')} className={`text-lg font-bold pb-3 transition-all ${viewMode === 'favorites' ? 'text-blue-600 border-b-4 border-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>Избранное ({favoriteIds.size})</button>
-              <button onClick={() => setViewMode('profile')} className={`text-lg font-bold pb-3 transition-all ${viewMode === 'profile' ? 'text-blue-600 border-b-4 border-blue-600' : 'text-gray-400 hover:text-gray-600'} sm:hidden`}>Профиль</button>
+              <button onClick={() => setViewMode('favorites')} className={`text-lg font-bold pb-3 transition-all ${viewMode === 'favorites' ? 'text-blue-600 border-b-4 border-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>
+                Избранное ({favoriteIds.size})
+              </button>
+              <button onClick={() => setViewMode('kanban')} className={`text-lg font-bold pb-3 transition-all ${viewMode === 'kanban' ? 'text-blue-600 border-b-4 border-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>
+                Мои отклики
+              </button>
+              <button onClick={() => setViewMode('profile')} className={`text-lg font-bold pb-3 transition-all ${viewMode === 'profile' ? 'text-blue-600 border-b-4 border-blue-600' : 'text-gray-400 hover:text-gray-600'} sm:hidden`}>
+                Профиль
+              </button>
             </>
+          )}
+          {isAuthenticated && userRole === 'ROLE_ADMIN' && (
+            <button onClick={() => setViewMode('admin')} className={`text-lg font-bold pb-3 transition-all ${viewMode === 'admin' ? 'text-purple-600 border-b-4 border-purple-600' : 'text-gray-400 hover:text-purple-500'}`}>
+              Админ панель
+            </button>
           )}
         </div>
 
-        {/* Контент в зависимости от вкладки */}
         {viewMode === 'profile' && isAuthenticated && <ProfilePanel />}
-
         {viewMode === 'stats' && <StatsDashboard vacancies={vacancies} />}
+        {viewMode === 'kanban' && isAuthenticated && <KanbanBoard onSelectVacancy={setSelectedVacancy} />}
+        {viewMode === 'admin' && isAuthenticated && userRole === 'ROLE_ADMIN' && <AdminPanel />}
 
-        {(viewMode === 'all' || viewMode === 'favorites' || viewMode === 'internships') && (
+        {(viewMode === 'all' || viewMode === 'favorites') && (
           <>
-            {/* Показываем фильтры и для Всех вакансий, и для Стажировок */}
-            {(viewMode === 'all' || viewMode === 'internships') && (
+            {viewMode === 'all' && (
               <FilterPanel
-                onFilterChange={(f) => { setFilters(f); setCurrentPage(0); }}
-                hideGrade={viewMode === 'internships'} // Прячем выбор грейда, если мы в стажировках
+                onFilterChange={handleFilterChange}
               />
             )}
 
@@ -167,93 +235,48 @@ function App() {
               <div className="space-y-4">
                 {vacancies.map(v => (
                   <div key={v.id} onClick={() => setSelectedVacancy(v)} className="cursor-pointer">
-                    <VacancyCard vacancy={v} isAuthenticated={isAuthenticated} isFavorite={favoriteIds.has(v.id)} onToggleFavorite={(id) => handleToggleFavorite(id)} />
+                    <VacancyCard
+                      vacancy={v}
+                      isAuthenticated={isAuthenticated}
+                      isFavorite={favoriteIds.has(v.id)}
+                      onToggleFavorite={(id) => handleToggleFavorite(id)}
+                      isTracked={trackedIds.has(v.id)}
+                      onTrack={(id) => handleTrack(id)}
+                      onUntrack={(id) => handleUntrack(id)}
+                    />
                   </div>
                 ))}
               </div>
             )}
 
             {/* Пагинация */}
-            {(viewMode === 'all' || viewMode === 'internships') && totalPages > 1 && (() => {
-              // Генерируем номера страниц с многоточиями
+            {viewMode === 'all' && totalPages > 1 && (() => {
               const pages: (number | '...')[] = [];
-              const delta = 2; // сколько страниц показывать вокруг текущей
-
-              // Всегда показываем первую страницу
+              const delta = 2;
               pages.push(0);
-
               const rangeStart = Math.max(1, currentPage - delta);
               const rangeEnd = Math.min(totalPages - 2, currentPage + delta);
-
               if (rangeStart > 1) pages.push('...');
               for (let i = rangeStart; i <= rangeEnd; i++) pages.push(i);
               if (rangeEnd < totalPages - 2) pages.push('...');
-
-              // Всегда показываем последнюю страницу (если больше 1)
               if (totalPages > 1) pages.push(totalPages - 1);
 
               return (
                 <div className="flex justify-center items-center gap-1.5 mt-12 flex-wrap">
-                  {/* В начало */}
-                  <button
-                    disabled={currentPage === 0}
-                    onClick={() => setCurrentPage(0)}
-                    className="px-3 py-2 bg-white border border-gray-200 rounded-xl font-bold disabled:opacity-30 hover:bg-blue-50 hover:border-blue-300 transition-all text-sm"
-                    title="В начало"
-                  >
-                    «
-                  </button>
-                  {/* Назад */}
-                  <button
-                    disabled={currentPage === 0}
-                    onClick={() => setCurrentPage(p => p - 1)}
-                    className="px-3 py-2 bg-white border border-gray-200 rounded-xl font-bold disabled:opacity-30 hover:bg-blue-50 hover:border-blue-300 transition-all text-sm"
-                    title="Назад"
-                  >
-                    ‹
-                  </button>
-
-                  {/* Номера страниц */}
+                  <button disabled={currentPage === 0} onClick={() => setCurrentPage(0)} className="px-3 py-2 bg-white border border-gray-200 rounded-xl font-bold disabled:opacity-30 hover:bg-blue-50 hover:border-blue-300 transition-all text-sm">«</button>
+                  <button disabled={currentPage === 0} onClick={() => setCurrentPage(p => p - 1)} className="px-3 py-2 bg-white border border-gray-200 rounded-xl font-bold disabled:opacity-30 hover:bg-blue-50 hover:border-blue-300 transition-all text-sm">‹</button>
                   {pages.map((p, idx) =>
                     p === '...' ? (
                       <span key={`dots-${idx}`} className="px-2 py-2 text-gray-400 font-bold select-none">…</span>
                     ) : (
-                      <button
-                        key={p}
-                        onClick={() => setCurrentPage(p)}
-                        className={`min-w-[40px] px-3 py-2 rounded-xl font-bold text-sm transition-all ${p === currentPage
-                          ? 'bg-blue-600 text-white shadow-md shadow-blue-200 border border-blue-600'
-                          : 'bg-white border border-gray-200 hover:bg-blue-50 hover:border-blue-300 text-gray-700'
-                          }`}
-                      >
+                      <button key={p} onClick={() => setCurrentPage(p)} className={`min-w-[40px] px-3 py-2 rounded-xl font-bold text-sm transition-all ${p === currentPage ? 'bg-blue-600 text-white shadow-md shadow-blue-200 border border-blue-600' : 'bg-white border border-gray-200 hover:bg-blue-50 hover:border-blue-300 text-gray-700'}`}>
                         {p + 1}
                       </button>
                     )
                   )}
-
-                  {/* Вперёд */}
-                  <button
-                    disabled={currentPage === totalPages - 1}
-                    onClick={() => setCurrentPage(p => p + 1)}
-                    className="px-3 py-2 bg-white border border-gray-200 rounded-xl font-bold disabled:opacity-30 hover:bg-blue-50 hover:border-blue-300 transition-all text-sm"
-                    title="Вперёд"
-                  >
-                    ›
-                  </button>
-                  {/* В конец */}
-                  <button
-                    disabled={currentPage === totalPages - 1}
-                    onClick={() => setCurrentPage(totalPages - 1)}
-                    className="px-3 py-2 bg-white border border-gray-200 rounded-xl font-bold disabled:opacity-30 hover:bg-blue-50 hover:border-blue-300 transition-all text-sm"
-                    title="В конец"
-                  >
-                    »
-                  </button>
-
-                  {/* Текст-подсказка */}
-                  <span className="ml-3 text-sm text-gray-400 font-medium hidden sm:inline">
-                    Страница {currentPage + 1} из {totalPages}
-                  </span>
+                  <button disabled={currentPage === totalPages - 1} onClick={() => setCurrentPage(p => p + 1)} className="px-3 py-2 bg-white border border-gray-200 rounded-xl font-bold disabled:opacity-30 hover:bg-blue-50 hover:border-blue-300 transition-all text-sm">›</button>
+                  <button disabled={currentPage === totalPages - 1} onClick={() => setCurrentPage(totalPages - 1)} className="px-3 py-2 bg-white border border-gray-200 rounded-xl font-bold disabled:opacity-30 hover:bg-blue-50 hover:border-blue-300 transition-all text-sm">»</button>
+                  <span className="ml-3 text-sm text-gray-400 font-medium hidden sm:inline">Страница {currentPage + 1} из {totalPages}</span>
                 </div>
               );
             })()}
